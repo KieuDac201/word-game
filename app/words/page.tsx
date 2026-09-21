@@ -210,7 +210,7 @@ export default function WordGameSetupPage() {
 
     // Store config in sessionStorage for the play page
     sessionStorage.setItem('game-config', JSON.stringify(config));
-    router.push('/play');
+    router.push('/words/play');
   }
 
   return (

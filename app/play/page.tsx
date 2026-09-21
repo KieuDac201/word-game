@@ -54,7 +54,7 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (!config) {
-      router.replace('/');
+      router.replace('/words');
     }
   }, [config, router]);
 
@@ -541,7 +541,7 @@ function GameArena({ config }: { config: GameConfig }) {
           <button
             onClick={() => {
               cancelAnimationFrame(animFrameRef.current);
-              router.push('/');
+              router.push('/words');
             }}
             className="px-3 py-1.5 text-xs rounded-md bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10 transition-all font-[family-name:var(--font-mono)]"
             title="Exit to Setup"
@@ -686,7 +686,7 @@ function GameArena({ config }: { config: GameConfig }) {
                   <button
                     onClick={() => {
                       cancelAnimationFrame(animFrameRef.current);
-                      router.push('/');
+                      router.push('/words');
                     }}
                     className="w-full py-3 rounded-lg bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70 transition-all font-[family-name:var(--font-mono)] text-sm"
                   >
@@ -811,7 +811,7 @@ function GameArena({ config }: { config: GameConfig }) {
                   <span>🔄 Play Again</span>
                 </button>
                 <button
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/words')}
                   className="flex-1 py-3 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80 transition-all font-[family-name:var(--font-mono)] text-sm font-semibold"
                 >
                   ⬅ Back to Setup

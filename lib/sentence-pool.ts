@@ -97,9 +97,13 @@ export function validateCustomPool(sentences: string[]): {
  */
 export function getLibrarySentences(
   category: LibraryCategory,
-  difficulty: Difficulty
+  difficulty: Difficulty,
+  customLibrary?: Record<string, string[]>
 ): string[] {
-  const all = SENTENCE_LIBRARIES[category];
+  const all =
+    (customLibrary && customLibrary[category]) ||
+    SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES] ||
+    [];
   const [minWords, maxWords] = DIFFICULTY_CONFIGS[difficulty].wordCountRange;
 
   return all.filter((s) => {
@@ -136,17 +140,22 @@ export function buildSentencePool(
   source: 'library' | 'custom',
   category: LibraryCategory,
   difficulty: Difficulty,
-  customSentences: string[]
+  customSentences: string[],
+  customLibrary?: Record<string, string[]>
 ): string[] {
   if (source === 'custom') {
     return customSentences;
   }
 
-  let sentences = getLibrarySentences(category, difficulty);
+  let sentences = getLibrarySentences(category, difficulty, customLibrary);
 
   // Fallback: if difficulty filter leaves too few, use all from category
   if (sentences.length < MIN_CUSTOM_SENTENCES) {
-    sentences = [...SENTENCE_LIBRARIES[category]];
+    const fallbackAll =
+      (customLibrary && customLibrary[category]) ||
+      SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES] ||
+      [];
+    sentences = [...fallbackAll];
   }
 
   return sentences;

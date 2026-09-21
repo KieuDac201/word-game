@@ -7,20 +7,15 @@ import type {
   FallingSentence,
   GameConfig,
   GameState,
-  GamePhase,
-  WordToken,
 } from './types';
 import {
   DIFFICULTY_CONFIGS,
   SPEED_CONFIGS,
-  DANGER_LINE_OFFSET_PX,
   LANE_COUNT,
-  MAX_COMBO_MULTIPLIER,
 } from './constants';
 import {
   tokenizeSentence,
   buildSentenceQueue,
-  shuffle,
 } from './sentence-pool';
 import {
   calculateSentenceScore,
@@ -30,16 +25,12 @@ import {
   updatePeakWPM,
 } from './scoring';
 
-let idCounter = 0;
-function nextId(): string {
-  return `s-${++idCounter}`;
-}
-
 // ─── Factory ─────────────────────────────────────────────────
 
 export function createInitialState(config: GameConfig): GameState {
-  idCounter = 0;
   return {
+    sessionId: Math.random().toString(36).slice(2, 9),
+    nextSentenceId: 0,
     phase: 'playing',
     score: 0,
     combo: 1,
@@ -63,6 +54,7 @@ export function createInitialState(config: GameConfig): GameState {
     lastSpawnTime: performance.now(),
     mistypedKeys: {},
     hasRecycled: false,
+    lastSentenceCompleteTime: 0,
   };
 }
 
@@ -120,8 +112,7 @@ function hasVerticalClearance(active: FallingSentence[]): boolean {
 export function trySpawnSentence(
   state: GameState,
   config: GameConfig,
-  currentTime: number,
-  dangerY: number
+  currentTime: number
 ): boolean {
   const diffConfig = DIFFICULTY_CONFIGS[config.difficulty];
 
@@ -149,8 +140,9 @@ export function trySpawnSentence(
   const text = config.sentences[sentenceIndex];
   const words = tokenizeSentence(text);
 
+  state.nextSentenceId++;
   const sentence: FallingSentence = {
-    id: nextId(),
+    id: `s-${state.sessionId}-${state.nextSentenceId}`,
     text,
     words,
     activeWordIndex: 0,
@@ -259,20 +251,46 @@ export function handleKeystroke(
   const activeWord = target.words[target.activeWordIndex];
   if (!activeWord) return result;
 
-  state.totalKeystrokes++;
+  const isLastWord = target.activeWordIndex >= target.words.length - 1;
 
-  // Space key: advance to next word if current word is complete
-  if (key === ' ') {
-    if (activeWord.charIndex >= activeWord.clean.length) {
-      // Word already completed by last char, space advances
+  // Case 1: Active word's letters are all typed. Player must press Space to advance.
+  if (activeWord.charIndex >= activeWord.clean.length) {
+    if (key === ' ' && !isLastWord) {
+      state.totalKeystrokes++;
       result.correct = true;
       state.correctKeystrokes++;
+      activeWord.completed = true;
+      result.wordCompleted = true;
+      state.wordsCompleted++;
+      target.activeWordIndex++;
       return result;
     }
-    // Space pressed mid-word — treat as incorrect
+
+    // Space after the last word is not needed; if pressed within grace period, ignore
+    if (key === ' ' && isLastWord) {
+      return result;
+    }
+
+    // Typed something else while waiting for space
+    state.totalKeystrokes++;
+    const displayKey = key.length === 1 ? key : key;
+    state.mistypedKeys[displayKey] = (state.mistypedKeys[displayKey] || 0) + 1;
+    return result;
+  }
+
+  // Case 2: Space pressed before word letters are finished
+  if (key === ' ') {
+    // Grace window: if previous sentence was completed within 300ms and activeWord is at char 0, ignore
+    if (activeWord.charIndex === 0 && currentTime - state.lastSentenceCompleteTime < 300) {
+      return result;
+    }
+
+    state.totalKeystrokes++;
     state.mistypedKeys['Space'] = (state.mistypedKeys['Space'] || 0) + 1;
     return result;
   }
+
+  state.totalKeystrokes++;
 
   const expectedChar = activeWord.clean[activeWord.charIndex];
   const typedChar = key.toLowerCase();
@@ -283,18 +301,17 @@ export function handleKeystroke(
     state.correctKeystrokes++;
     activeWord.charIndex++;
 
-    // Check if word is complete
+    // Check if word characters are complete
     if (activeWord.charIndex >= activeWord.clean.length) {
-      activeWord.completed = true;
-      result.wordCompleted = true;
-      state.wordsCompleted++;
-
-      // Advance to next word or complete sentence
-      if (target.activeWordIndex >= target.words.length - 1) {
-        // Sentence complete!
-        target.completed = true;
+      if (isLastWord) {
+        // Last word in sentence: completed immediately on the final character!
+        activeWord.completed = true;
+        result.wordCompleted = true;
         result.sentenceCompleted = true;
+        target.completed = true;
+        state.wordsCompleted++;
         state.sentencesCompleted++;
+        state.lastSentenceCompleteTime = currentTime;
 
         // Score
         const completionTime = currentTime - target.spawnTime;
@@ -313,9 +330,8 @@ export function handleKeystroke(
         // Combo
         state.combo = incrementCombo(state.combo);
         if (state.combo > state.maxCombo) state.maxCombo = state.combo;
-      } else {
-        target.activeWordIndex++;
       }
+      // If NOT last word, do NOT advance yet! The next keystroke must be Space!
     }
   } else {
     // Incorrect keystroke

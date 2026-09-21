@@ -41,20 +41,22 @@ export default function PlayPage() {
   const router = useRouter();
 
   // ─── Config from sessionStorage ────────────────────────────
-  const [config, setConfig] = useState<GameConfig | null>(null);
+  const [config] = useState<GameConfig | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = sessionStorage.getItem('game-config');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('game-config');
-    if (!raw) {
-      router.replace('/');
-      return;
-    }
-    try {
-      setConfig(JSON.parse(raw));
-    } catch {
+    if (!config) {
       router.replace('/');
     }
-  }, [router]);
+  }, [config, router]);
 
   if (!config) {
     return (
@@ -76,14 +78,19 @@ function GameArena({ config }: { config: GameConfig }) {
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const sentenceContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stateRef = useRef<GameState>(createInitialState(config));
+  const stateRef = useRef<GameState | null>(null);
+  if (stateRef.current == null) {
+    stateRef.current = createInitialState(config);
+  }
   const animFrameRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
   const lastHudUpdateRef = useRef<number>(0);
   const lastSentenceUpdateRef = useRef<number>(0);
   const gameLoopRef = useRef<((timestamp: number) => void) | null>(null);
   const configRef = useRef(config);
-  configRef.current = config;
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   // UI state (re-rendered at throttled rate)
   const [hudData, setHudData] = useState({
@@ -99,7 +106,6 @@ function GameArena({ config }: { config: GameConfig }) {
   const [shaking, setShaking] = useState(false);
   const [errorFlash, setErrorFlash] = useState<string | null>(null);
   const [pauseCountdown, setPauseCountdown] = useState<number | null>(null);
-  const [particles, setParticles] = useState<Particle[]>([]);
   const particlesRef = useRef<Particle[]>([]);
 
   // ─── Audio Setup ───────────────────────────────────────────
@@ -154,19 +160,26 @@ function GameArena({ config }: { config: GameConfig }) {
     const alive: Particle[] = [];
 
     for (const p of particlesRef.current) {
-      p.x += p.vx * deltaSec;
-      p.y += p.vy * deltaSec;
-      p.vy += 200 * deltaSec; // gravity
-      p.life -= deltaSec / p.maxLife;
-      p.opacity = Math.max(0, p.life);
+      const nextX = p.x + p.vx * deltaSec;
+      const nextVy = p.vy + 200 * deltaSec; // gravity
+      const nextY = p.y + nextVy * deltaSec;
+      const nextLife = p.life - deltaSec / p.maxLife;
+      const opacity = Math.max(0, nextLife);
 
-      if (p.life > 0) {
-        ctx.globalAlpha = p.opacity;
+      if (nextLife > 0) {
+        ctx.globalAlpha = opacity;
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.arc(nextX, nextY, p.size * nextLife, 0, Math.PI * 2);
         ctx.fill();
-        alive.push(p);
+        alive.push({
+          ...p,
+          x: nextX,
+          y: nextY,
+          vy: nextVy,
+          life: nextLife,
+          opacity,
+        });
       }
     }
 
@@ -180,10 +193,23 @@ function GameArena({ config }: { config: GameConfig }) {
     return gameAreaRef.current.clientHeight - DANGER_LINE_OFFSET_PX;
   }, []);
 
+  // ─── Get lane center X position in canvas coordinates ───────
+  const getLaneCenterX = useCallback((lane: number) => {
+    const container = sentenceContainerRef.current;
+    const area = gameAreaRef.current;
+    if (!container || !area) return 0;
+    const containerRect = container.getBoundingClientRect();
+    const areaRect = area.getBoundingClientRect();
+    const laneWidth = containerRect.width / 3;
+    const offsetLeft = containerRect.left - areaRect.left;
+    return offsetLeft + lane * laneWidth + laneWidth / 2;
+  }, []);
+
   // ─── End Game ──────────────────────────────────────────────
   const endGame = useCallback(
     (isVictory: boolean) => {
       const state = stateRef.current;
+      if (!state) return;
       state.phase = isVictory ? 'victory' : 'gameover';
       setGamePhase(state.phase);
       cancelAnimationFrame(animFrameRef.current);
@@ -223,12 +249,35 @@ function GameArena({ config }: { config: GameConfig }) {
     []
   );
 
-  // ─── Main Game Loop ────────────────────────────────────────
-  // Stored in a ref to avoid useEffect re-triggering on re-renders
-  if (!gameLoopRef.current) {
-    gameLoopRef.current = (timestamp: number) => {
+  // ─── Resume with countdown ─────────────────────────────────
+  const resumeWithCountdown = useCallback(() => {
+    let count = 3;
+    setPauseCountdown(count);
+
+    const interval = setInterval(() => {
+      count--;
+      if (count <= 0) {
+        clearInterval(interval);
+        setPauseCountdown(null);
+        if (stateRef.current) {
+          stateRef.current.phase = 'playing';
+        }
+        setGamePhase('playing');
+        lastFrameTimeRef.current = 0;
+        if (gameLoopRef.current) {
+          animFrameRef.current = requestAnimationFrame(gameLoopRef.current);
+        }
+      } else {
+        setPauseCountdown(count);
+      }
+    }, 800);
+  }, []);
+
+  // ─── Start Game Loop (runs ONCE on mount) ─────────────────
+  useEffect(() => {
+    const loop = (timestamp: number) => {
       const state = stateRef.current;
-      if (state.phase !== 'playing') return;
+      if (!state || state.phase !== 'playing') return;
 
       if (lastFrameTimeRef.current === 0) {
         lastFrameTimeRef.current = timestamp;
@@ -242,7 +291,7 @@ function GameArena({ config }: { config: GameConfig }) {
       const cfg = configRef.current;
 
       // Spawn
-      trySpawnSentence(state, cfg, now, dangerY);
+      trySpawnSentence(state, cfg, now);
 
       // Physics
       const droppedIds = updatePhysics(state, cfg, deltaMs, dangerY);
@@ -255,12 +304,8 @@ function GameArena({ config }: { config: GameConfig }) {
           playSentenceDrop();
 
           // Impact particles
-          const area = gameAreaRef.current;
-          if (area) {
-            const laneWidth = area.clientWidth / 3;
-            const x = sentence.lane * laneWidth + laneWidth / 2;
-            spawnParticles(x, dangerY, 15, 'var(--neon-red)', 'impact');
-          }
+          const x = getLaneCenterX(sentence.lane);
+          spawnParticles(x, dangerY, 15, 'var(--neon-red)', 'impact');
 
           // Screen shake
           setShaking(true);
@@ -331,28 +376,26 @@ function GameArena({ config }: { config: GameConfig }) {
         );
       }
 
-      animFrameRef.current = requestAnimationFrame(gameLoopRef.current!);
+      animFrameRef.current = requestAnimationFrame(loop);
     };
-  }
 
-  // ─── Start Game Loop (runs ONCE on mount) ─────────────────
-  useEffect(() => {
+    gameLoopRef.current = loop;
     lastFrameTimeRef.current = 0;
-    animFrameRef.current = requestAnimationFrame(gameLoopRef.current!);
+    animFrameRef.current = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [endGame, getDangerY, getLaneCenterX, renderParticles, spawnParticles]);
 
   // ─── Keystroke Handler ─────────────────────────────────────
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const state = stateRef.current;
+      if (!state) return;
 
-      // Pause/Resume
-      if (e.key === 'Escape' || e.key.toLowerCase() === 'p') {
+      // Pause/Resume (Escape key only)
+      if (e.key === 'Escape') {
         if (state.phase === 'playing') {
           e.preventDefault();
           state.phase = 'paused';
@@ -393,9 +436,8 @@ function GameArena({ config }: { config: GameConfig }) {
           const target = state.activeSentences.find(
             (s) => s.id === result.targetSentenceId
           );
-          if (target && gameAreaRef.current) {
-            const laneWidth = gameAreaRef.current.clientWidth / 3;
-            const x = target.lane * laneWidth + laneWidth / 2;
+          if (target) {
+            const x = getLaneCenterX(target.lane);
             spawnParticles(x, target.y, 25, '#00ff88', 'explosion');
           }
         } else if (result.wordCompleted) {
@@ -431,27 +473,7 @@ function GameArena({ config }: { config: GameConfig }) {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [config, spawnParticles]);
-
-  // ─── Resume with countdown ─────────────────────────────────
-  const resumeWithCountdown = useCallback(() => {
-    let count = 3;
-    setPauseCountdown(count);
-
-    const interval = setInterval(() => {
-      count--;
-      if (count <= 0) {
-        clearInterval(interval);
-        setPauseCountdown(null);
-        stateRef.current.phase = 'playing';
-        setGamePhase('playing');
-        lastFrameTimeRef.current = 0;
-        animFrameRef.current = requestAnimationFrame(gameLoopRef.current!);
-      } else {
-        setPauseCountdown(count);
-      }
-    }, 800);
-  }, []);
+  }, [config, spawnParticles, resumeWithCountdown, getLaneCenterX]);
 
   // ─── Play Again ────────────────────────────────────────────
   const handlePlayAgain = useCallback(() => {
@@ -473,8 +495,6 @@ function GameArena({ config }: { config: GameConfig }) {
   }, [config]);
 
   // ─── Render ────────────────────────────────────────────────
-  const dangerY = getDangerY();
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* HUD Bar */}
@@ -499,7 +519,7 @@ function GameArena({ config }: { config: GameConfig }) {
         <div className="hud-stat">
           <span className="hud-stat-label">Lives</span>
           <span className="hud-stat-value lives">
-            {Array.from({ length: hudData.lives }, (_, i) => '❤️').join('')}
+            {Array(hudData.lives).fill('❤️').join('')}
             {hudData.lives === 0 && '💀'}
           </span>
         </div>
@@ -507,14 +527,14 @@ function GameArena({ config }: { config: GameConfig }) {
           <button
             onClick={() => {
               const state = stateRef.current;
-              if (state.phase === 'playing') {
+              if (state && state.phase === 'playing') {
                 state.phase = 'paused';
                 setGamePhase('paused');
                 cancelAnimationFrame(animFrameRef.current);
               }
             }}
             className="px-3 py-1.5 text-xs rounded-md bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10 transition-all font-[family-name:var(--font-mono)]"
-            title="Pause (Esc/P)"
+            title="Pause (Esc)"
           >
             ⏸ Pause
           </button>
@@ -542,15 +562,21 @@ function GameArena({ config }: { config: GameConfig }) {
           className="absolute inset-0 w-full h-full pointer-events-none z-20"
         />
 
-        {/* Sentence Container — positions updated via direct DOM manipulation */}
-        <div ref={sentenceContainerRef}>
+        {/* Centered Lane Tracks */}
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] pointer-events-none px-4 grid grid-cols-3">
+          <div className="border-x border-white/[0.04] bg-white/[0.01] h-full" />
+          <div className="border-r border-white/[0.04] bg-white/[0.01] h-full" />
+          <div className="border-r border-white/[0.04] bg-white/[0.01] h-full" />
+        </div>
+
+        {/* Sentence Container — centered and positions updated via direct DOM manipulation */}
+        <div
+          ref={sentenceContainerRef}
+          className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-[1400px] pointer-events-none px-4"
+        >
 
         {/* Falling Sentences */}
         {sentences.map((sentence) => {
-          const area = gameAreaRef.current;
-          const laneWidth = area ? area.clientWidth / 3 : 400;
-          const xPos = sentence.lane * laneWidth + 20;
-
           return (
             <div
               key={sentence.id}
@@ -560,38 +586,62 @@ function GameArena({ config }: { config: GameConfig }) {
               } ${sentence.completed ? 'animate-dissolve' : ''}`}
               style={{
                 top: 0,
-                left: `${xPos}px`,
-                maxWidth: `${laneWidth - 40}px`,
+                left: `calc(${(sentence.lane / 3) * 100}% + 8px)`,
+                maxWidth: 'calc(33.333% - 16px)',
+                width: 'calc(33.333% - 16px)',
                 whiteSpace: 'normal',
                 lineHeight: '1.6',
                 transform: `translateY(${sentence.y}px)`,
                 willChange: 'transform',
               }}
             >
-              {sentence.words.map((word, wIdx) => (
-                <span key={wIdx} className="inline-block mr-1.5">
-                  {word.completed ? (
-                    <span className="word-completed">{word.raw}</span>
-                  ) : wIdx === sentence.activeWordIndex &&
-                    sentence.isTargeted ? (
-                    // Active word: show per-character states
-                    <>
-                      {word.clean.split('').map((char, cIdx) => {
-                        let cls = 'char-pending';
-                        if (cIdx < word.charIndex) cls = 'char-correct';
-                        else if (cIdx === word.charIndex) cls = 'char-current';
-                        return (
-                          <span key={cIdx} className={cls}>
-                            {char}
+              {sentence.words.map((word, wIdx) => {
+                const isTargeted = sentence.isTargeted;
+                const isCurrentWord = wIdx === sentence.activeWordIndex && isTargeted;
+                const isLastWord = wIdx === sentence.words.length - 1;
+                const waitingForSpace = isCurrentWord && word.charIndex >= word.clean.length && !isLastWord;
+
+                return (
+                  <span key={wIdx} className="inline-block">
+                    {word.completed ? (
+                      <span className="word-completed">{word.raw}</span>
+                    ) : isCurrentWord ? (
+                      <>
+                        {word.clean.split('').map((char, cIdx) => {
+                          let cls = 'char-pending';
+                          if (cIdx < word.charIndex) cls = 'char-correct';
+                          else if (cIdx === word.charIndex) cls = 'char-current';
+                          return (
+                            <span key={cIdx} className={cls}>
+                              {char}
+                            </span>
+                          );
+                        })}
+                        {word.raw.length > word.clean.length && (
+                          <span className={word.completed ? 'char-correct' : 'char-pending'}>
+                            {word.raw.slice(word.clean.length)}
                           </span>
-                        );
-                      })}
-                    </>
-                  ) : (
-                    <span className="char-pending">{word.raw}</span>
-                  )}
-                </span>
-              ))}
+                        )}
+                      </>
+                    ) : (
+                      <span className="char-pending">{word.raw}</span>
+                    )}
+                    {!isLastWord && (
+                      <span
+                        className={
+                          word.completed
+                            ? 'char-correct'
+                            : waitingForSpace
+                            ? 'char-current font-bold'
+                            : 'char-pending'
+                        }
+                      >
+                        {waitingForSpace ? '␣' : '\u00A0'}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           );
         })}
@@ -644,7 +694,7 @@ function GameArena({ config }: { config: GameConfig }) {
                   </button>
                 </div>
                 <p className="text-xs text-white/30 mt-4">
-                  Press Esc or P to resume
+                  Press Esc to resume
                 </p>
               </>
             )}

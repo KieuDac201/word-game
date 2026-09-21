@@ -16,7 +16,8 @@ export type LibraryCategory =
   | 'casual'
   | 'quotes'
   | 'programming'
-  | 'idioms';
+  | 'idioms'
+  | (string & {});
 
 /** Game state machine */
 export type GamePhase = 'idle' | 'playing' | 'paused' | 'gameover' | 'victory';
@@ -73,6 +74,8 @@ export interface GameConfig {
 
 /** Live game state (mutable via useRef for performance) */
 export interface GameState {
+  sessionId: string;
+  nextSentenceId: number;
   phase: GamePhase;
   score: number;
   combo: number;
@@ -104,6 +107,8 @@ export interface GameState {
   mistypedKeys: Record<string, number>;
   /** Whether the pool has been recycled at least once */
   hasRecycled: boolean;
+  /** Timestamp when the last sentence was completed */
+  lastSentenceCompleteTime: number;
 }
 
 /** Difficulty preset configuration values */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   Difficulty,
@@ -63,6 +63,118 @@ export default function SetupPage() {
   const [soundVolume, setSoundVolume] = useState(0.5);
   const [customText, setCustomText] = useState('');
 
+  // Categories and Sentences loaded from Neon DB
+  const [categories, setCategories] = useState<{
+    key: LibraryCategory;
+    slug: string;
+    label: string;
+    icon: string;
+    description: string;
+    sentenceCount?: number;
+  }[]>(LIBRARY_CATEGORIES.map((c) => ({ ...c, slug: c.key })));
+
+  const [dbSentences, setDbSentences] = useState<Record<string, string[]>>({});
+  const [dbStatus, setDbStatus] = useState<'loading' | 'connected' | 'offline'>('loading');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [categorySearch, setCategorySearch] = useState('');
+
+  const selectedCategoryObj = useMemo(() => {
+    return (
+      categories.find((c) => (c.slug || c.key) === category) ||
+      categories[0] || {
+        key: 'casual',
+        slug: 'casual',
+        label: 'Casual Daily',
+        icon: '☀️',
+        description: 'Everyday phrases and common expressions',
+        sentenceCount: 0,
+      }
+    );
+  }, [categories, category]);
+
+  const filteredCategories = useMemo(() => {
+    if (!categorySearch.trim()) return categories;
+    const q = categorySearch.toLowerCase().trim();
+    return categories.filter(
+      (c) =>
+        c.label.toLowerCase().includes(q) ||
+        c.description?.toLowerCase().includes(q) ||
+        (c.slug && c.slug.toLowerCase().includes(q))
+    );
+  }, [categories, categorySearch]);
+
+  // Close dropdown on outside click or Escape key
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setIsDropdownOpen(false);
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDropdownOpen]);
+
+  // Auto focus search input when dropdown opens
+  useEffect(() => {
+    if (isDropdownOpen) {
+      const timer = setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNeonData() {
+      try {
+        const [catRes, senRes] = await Promise.all([
+          fetch('/api/categories'),
+          fetch('/api/sentences'),
+        ]);
+
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          if (isMounted && catData.categories?.length > 0) {
+            setCategories(catData.categories);
+            if (catData.source === 'database') {
+              setDbStatus('connected');
+            }
+          }
+        }
+
+        if (senRes.ok) {
+          const senData = await senRes.json();
+          if (isMounted && senData.sentencesByCategory) {
+            setDbSentences(senData.sentencesByCategory);
+          }
+        }
+      } catch (err) {
+        console.warn('Neon DB fetch failed, using fallback:', err);
+        if (isMounted) setDbStatus('offline');
+      }
+    }
+
+    loadNeonData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Parse custom text
   const parsedCustom = useMemo(() => parseCustomText(customText), [customText]);
   const customValidation = useMemo(
@@ -70,11 +182,11 @@ export default function SetupPage() {
     [parsedCustom]
   );
 
-  // Build final pool preview
+  // Build final pool preview using DB sentences if loaded, else fallback
   const sentencePool = useMemo(() => {
     if (source === 'custom') return parsedCustom;
-    return buildSentencePool(source, category, difficulty, []);
-  }, [source, category, difficulty, parsedCustom]);
+    return buildSentencePool(source, category, difficulty, [], dbSentences);
+  }, [source, category, difficulty, parsedCustom, dbSentences]);
 
   const canStart =
     source === 'library' ? sentencePool.length >= 5 : customValidation.valid;
@@ -146,12 +258,20 @@ export default function SetupPage() {
         {/* Config Panel */}
         <div className="relative w-full max-w-3xl space-y-6 animate-fade-in">
           {/* ── Sentence Source ───────────────────────────── */}
-          <div className="glass-card p-6">
-            <SectionTitle
-              icon="📝"
-              title="Sentence Source"
-              subtitle="Choose your text pool"
-            />
+          <div className="glass-card p-6 relative z-30">
+            <div className="flex items-center justify-between mb-4">
+              <SectionTitle
+                icon="📝"
+                title="Sentence Source"
+                subtitle="Choose your text pool"
+              />
+              {dbStatus === 'connected' && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full bg-[var(--neon-green)]/10 text-[var(--neon-green)] border border-[var(--neon-green)]/30 font-[family-name:var(--font-mono)] flex items-center gap-1.5 shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--neon-green)] animate-pulse" />
+                  Neon DB Live
+                </span>
+              )}
+            </div>
 
             {/* Tab Switcher */}
             <div className="flex gap-2 mb-5">
@@ -174,25 +294,166 @@ export default function SetupPage() {
             </div>
 
             {source === 'library' ? (
-              <div className="grid grid-cols-2 gap-3">
-                {LIBRARY_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.key}
-                    onClick={() => {
-                      setCategory(cat.key);
-                      playUIClick();
-                    }}
-                    className={`glass-card p-4 text-left transition-all cursor-pointer ${
-                      category === cat.key ? 'glass-card-active' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">{cat.icon}</span>
-                      <span className="font-semibold text-sm">{cat.label}</span>
+              <div className="relative" ref={dropdownRef}>
+                {/* Dropdown Label & Stats */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-white/50 font-[family-name:var(--font-mono)]">
+                    Selected Category
+                  </span>
+                  <span className="text-[11px] text-[var(--neon-cyan)]/80 font-[family-name:var(--font-mono)]">
+                    {categories.length} Categories Available
+                  </span>
+                </div>
+
+                {/* Dropdown Trigger Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDropdownOpen((prev) => !prev);
+                    playUIClick();
+                  }}
+                  className={`w-full glass-card p-4 text-left transition-all cursor-pointer flex items-center justify-between gap-4 border ${
+                    isDropdownOpen
+                      ? 'border-[var(--neon-cyan)]/70 shadow-[0_0_20px_rgba(0,240,255,0.2)] ring-1 ring-[var(--neon-cyan)]/40 bg-[var(--surface-2)]/90'
+                      : 'border-white/10 hover:border-white/25 bg-[var(--surface-1)]/60 hover:bg-[var(--surface-1)]/90'
+                  }`}
+                  aria-haspopup="listbox"
+                  aria-expanded={isDropdownOpen}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <span className="text-2xl flex-shrink-0 p-2.5 rounded-xl bg-white/5 border border-white/10 shadow-inner">
+                      {selectedCategoryObj.icon}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm sm:text-base text-white tracking-wide truncate">
+                          {selectedCategoryObj.label}
+                        </span>
+                        {typeof selectedCategoryObj.sentenceCount === 'number' && selectedCategoryObj.sentenceCount > 0 && (
+                          <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30 font-[family-name:var(--font-mono)] flex-shrink-0 font-medium">
+                            {selectedCategoryObj.sentenceCount} sentences
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-white/50 truncate mt-0.5">
+                        {selectedCategoryObj.description}
+                      </p>
                     </div>
-                    <p className="text-xs text-white/40">{cat.description}</p>
-                  </button>
-                ))}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-white/5 text-white/70 border border-white/10 hidden sm:inline-block font-[family-name:var(--font-mono)]">
+                      {isDropdownOpen ? 'Close' : 'Change'}
+                    </span>
+                    <span
+                      className={`text-xs text-[var(--neon-cyan)] transition-transform duration-200 transform ${
+                        isDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    >
+                      ▼
+                    </span>
+                  </div>
+                </button>
+
+                {/* Dropdown Menu Popover */}
+                {isDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-2 z-50 rounded-xl bg-[#0e0e17]/95 backdrop-blur-2xl border border-[var(--neon-cyan)]/30 shadow-[0_15px_40px_rgba(0,0,0,0.8)] p-3 animate-fade-in">
+                    {/* Search Input inside Dropdown */}
+                    <div className="relative mb-2.5">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-xs">
+                        🔍
+                      </span>
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        placeholder={`Search ${categories.length} categories (e.g. science, cinema, ai)...`}
+                        className="w-full bg-white/5 border border-white/15 rounded-lg pl-8 pr-8 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-[var(--neon-cyan)]/60 font-[family-name:var(--font-mono)] transition-all"
+                      />
+                      {categorySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setCategorySearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs cursor-pointer p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick Category Summary */}
+                    <div className="flex items-center justify-between px-1 pb-1.5 text-[10px] text-white/40 font-[family-name:var(--font-mono)] border-b border-white/5 mb-1.5">
+                      <span>CATEGORIES</span>
+                      <span>{filteredCategories.length} matching</span>
+                    </div>
+
+                    {/* Scrollable list of categories */}
+                    <div
+                      className="max-h-[290px] overflow-y-auto space-y-1 pr-1"
+                      role="listbox"
+                    >
+                      {filteredCategories.map((cat) => {
+                        const isSelected = category === (cat.slug || cat.key);
+                        return (
+                          <button
+                            key={cat.slug || cat.key}
+                            type="button"
+                            onClick={() => {
+                              setCategory(cat.slug || cat.key);
+                              setIsDropdownOpen(false);
+                              playUIClick();
+                            }}
+                            className={`w-full p-2.5 rounded-lg text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                              isSelected
+                                ? 'bg-[var(--neon-cyan)]/15 border border-[var(--neon-cyan)]/40 text-white shadow-sm'
+                                : 'bg-white/5 border border-transparent hover:bg-white/10 text-white/80 hover:text-white'
+                            }`}
+                            role="option"
+                            aria-selected={isSelected}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xl flex-shrink-0">{cat.icon}</span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-xs truncate">
+                                    {cat.label}
+                                  </span>
+                                  {isSelected && (
+                                    <span className="text-[10px] text-[var(--neon-cyan)] font-mono">
+                                      ✓ Active
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-white/40 truncate mt-0.5">
+                                  {cat.description}
+                                </p>
+                              </div>
+                            </div>
+
+                            {typeof cat.sentenceCount === 'number' && cat.sentenceCount > 0 && (
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-[family-name:var(--font-mono)] flex-shrink-0 ${
+                                  isSelected
+                                    ? 'bg-[var(--neon-cyan)]/20 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30'
+                                    : 'bg-white/5 text-white/50 border border-white/10'
+                                }`}
+                              >
+                                {cat.sentenceCount}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {filteredCategories.length === 0 && (
+                        <div className="py-8 text-center text-white/40 text-xs">
+                          No category matches &quot;{categorySearch}&quot;
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div>
@@ -222,9 +483,16 @@ export default function SetupPage() {
             )}
 
             {source === 'library' && (
-              <div className="mt-3 text-xs text-white/30 font-[family-name:var(--font-mono)]">
-                {sentencePool.length} sentences available for{' '}
-                {DIFFICULTY_CONFIGS[difficulty].label} difficulty
+              <div className="mt-3 flex items-center justify-between text-xs text-white/30 font-[family-name:var(--font-mono)]">
+                <span>
+                  {sentencePool.length} sentences available for{' '}
+                  {DIFFICULTY_CONFIGS[difficulty].label} difficulty
+                </span>
+                {dbStatus === 'connected' && (
+                  <span className="text-[var(--neon-green)]/70">
+                    ✓ Sourced from Neon
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -318,7 +586,7 @@ export default function SetupPage() {
                     <div className="mt-2 flex items-center gap-3">
                       <input
                         type="range"
-                        min={10}
+                        min={5}
                         max={120}
                         step={5}
                         value={customSpeedPPS}

@@ -94,9 +94,17 @@ export default function ScramblePlayPage() {
         );
         if (!res.ok) throw new Error('API fetch failed');
         const data = await res.json();
-        if (data.sentences && data.sentences.length > 0) {
+        const rawList = data.items || data.sentences || [];
+        const normalized: { id: string; text: string }[] = rawList.map((item: any, idx: number) => {
+          if (typeof item === 'string') {
+            return { id: `sen-${idx}`, text: item };
+          }
+          return { id: String(item.id || `sen-${idx}`), text: item.text };
+        });
+
+        if (normalized.length > 0) {
           // Shuffle sentences so every game feels fresh
-          const shuffled = [...data.sentences].sort(() => Math.random() - 0.5);
+          const shuffled = [...normalized].sort(() => Math.random() - 0.5);
           const finalCount =
             loadedConfig.roundCount > 0
               ? Math.min(loadedConfig.roundCount, shuffled.length)
@@ -145,8 +153,8 @@ export default function ScramblePlayPage() {
 
   // Setup current sentence
   const initSentence = useCallback(
-    (sentenceObj: { id: string; text: string }) => {
-      const rawText = sentenceObj.text.trim();
+    (sentenceObj: { id: string; text: string } | string) => {
+      const rawText = (typeof sentenceObj === 'string' ? sentenceObj : sentenceObj?.text || '').trim();
       setTargetSentence(rawText);
 
       // Split into words, preserving punctuation attached to words
@@ -555,9 +563,7 @@ export default function ScramblePlayPage() {
               : ''
           }`}
         >
-          {/* Neon track center line */}
-          <div className="rail-track-lines" />
-
+        
           {/* Slots along the rail */}
           <div className="flex flex-wrap items-center justify-center gap-3 z-10">
             {railSlots.map((slotWord, idx) => (

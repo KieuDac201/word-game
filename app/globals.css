@@ -1,26 +1,410 @@
 @import "tailwindcss";
 
+/* ──────────────────────────────────────────────────────────────
+   Falling Sentence Typing Game — Global Styles
+   Dark arcade / cyberpunk aesthetic
+   ────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Neon accent palette */
+  --neon-cyan: #00f0ff;
+  --neon-pink: #ff2d95;
+  --neon-green: #00ff88;
+  --neon-yellow: #ffe14d;
+  --neon-purple: #b44dff;
+  --neon-red: #ff4d4d;
+
+  /* Surface colors */
+  --surface-0: #0a0a0f;
+  --surface-1: #12121a;
+  --surface-2: #1a1a2e;
+  --surface-3: #252540;
+
+  /* Glass */
+  --glass-bg: rgba(18, 18, 26, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.15);
+
+  /* Danger line */
+  --danger-red: #ff2d2d;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ─── Base ──────────────────────────────────────────────────── */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--surface-0);
+  background-image:
+    radial-gradient(
+      ellipse at 20% 50%,
+      rgba(0, 240, 255, 0.03) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 50%,
+      rgba(255, 45, 149, 0.03) 0%,
+      transparent 50%
+    );
+}
+
+::selection {
+  background-color: rgba(0, 240, 255, 0.3);
+  color: white;
+}
+
+/* ─── Glassmorphism Card ───────────────────────────────────── */
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--glass-border-hover);
+}
+
+.glass-card-active {
+  border-color: var(--neon-cyan) !important;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.05);
+}
+
+/* ─── Neon Button ──────────────────────────────────────────── */
+
+.neon-button {
+  position: relative;
+  padding: 14px 36px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(180, 77, 255, 0.15));
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.neon-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  border-radius: inherit;
+}
+
+.neon-button:hover::before {
+  opacity: 0.2;
+}
+
+.neon-button:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.3), 0 0 60px rgba(0, 240, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.neon-button:active {
+  transform: translateY(0);
+}
+
+.neon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.neon-button span {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Sentence Block ──────────────────────────────────────── */
+
+.sentence-block {
+  position: absolute;
+  padding: 10px 18px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sentence-block.targeted {
+  border-color: var(--neon-cyan);
+  box-shadow:
+    0 0 15px rgba(0, 240, 255, 0.25),
+    0 0 40px rgba(0, 240, 255, 0.08),
+    inset 0 0 15px rgba(0, 240, 255, 0.05);
+}
+
+.sentence-block.targeted::before {
+  content: '▶';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--neon-cyan);
+  font-size: 0.75rem;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+/* ─── Character States ────────────────────────────────────── */
+
+.char-correct {
+  color: var(--neon-green);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+}
+
+.char-current {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+  border-bottom: 2px solid var(--neon-cyan);
+  animation: cursor-blink 1s ease-in-out infinite;
+}
+
+.char-pending {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.word-completed {
+  color: var(--neon-green);
+  text-shadow: 0 0 6px rgba(0, 255, 136, 0.3);
+  opacity: 0.7;
+}
+
+/* ─── Danger Line ──────────────────────────────────────────── */
+
+.danger-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--danger-red),
+    var(--danger-red),
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(255, 45, 45, 0.4), 0 0 30px rgba(255, 45, 45, 0.15);
+  animation: danger-pulse 2s ease-in-out infinite;
+}
+
+.danger-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 45, 45, 0.03)
+  );
+  pointer-events: none;
+}
+
+/* ─── HUD ──────────────────────────────────────────────────── */
+
+.hud-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  z-index: 10;
+}
+
+.hud-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud-stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.hud-stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-stat-value.combo {
+  color: var(--neon-yellow);
+}
+
+.hud-stat-value.lives {
+  color: var(--neon-pink);
+}
+
+/* ─── Animations ──────────────────────────────────────────── */
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes cursor-blink {
+  0%, 100% { border-bottom-color: var(--neon-cyan); }
+  50% { border-bottom-color: transparent; }
+}
+
+@keyframes danger-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+@keyframes error-flash {
+  0% { background-color: rgba(255, 45, 45, 0.2); }
+  100% { background-color: transparent; }
+}
+
+@keyframes pop-in {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slide-up {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes word-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes dissolve {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.1); filter: blur(8px); }
+}
+
+@keyframes countdown {
+  0% { transform: scale(2); opacity: 0; }
+  30% { transform: scale(1); opacity: 1; }
+  80% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+.animate-error-flash {
+  animation: error-flash 0.3s ease-out;
+}
+
+.animate-pop-in {
+  animation: pop-in 0.35s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-word-pop {
+  animation: word-pop 0.2s ease-out;
+}
+
+.animate-dissolve {
+  animation: dissolve 0.5s ease-out forwards;
+}
+
+.animate-countdown {
+  animation: countdown 0.8s ease-out;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ─── Overlay ──────────────────────────────────────────────── */
+
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fade-in 0.3s ease-out;
+}
+
+/* ─── Mobile notice ────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .desktop-only-notice {
+    display: flex !important;
+  }
+  .game-content {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .desktop-only-notice {
+    display: none !important;
+  }
 }

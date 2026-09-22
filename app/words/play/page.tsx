@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import type { GameConfig, GameState, GameOverStats, Particle } from '@/lib/types';
+import type { GameConfig, GameState, GameOverStats, Particle, WordGameCompletionData } from '@/lib/types';
 import {
   createInitialState,
   trySpawnSentence,
@@ -243,8 +243,21 @@ function GameArena({ config }: { config: GameConfig }) {
         elapsedTime: state.elapsedTime,
         mistypedKeys: getTopMistypedKeys(state.mistypedKeys),
         isVictory,
+        sentenceHistory: state.sentenceHistory,
       };
       setGameOverStats(stats);
+
+      // Persist completion data for the completion page
+      try {
+        const completionData: WordGameCompletionData = {
+          stats,
+          config: configRef.current,
+          sentences: state.sentenceHistory,
+        };
+        sessionStorage.setItem('word-game-completion', JSON.stringify(completionData));
+      } catch (err) {
+        console.error('Failed to save word-game-completion:', err);
+      }
     },
     []
   );
@@ -300,7 +313,7 @@ function GameArena({ config }: { config: GameConfig }) {
       for (const id of droppedIds) {
         const sentence = state.activeSentences.find((s) => s.id === id);
         if (sentence) {
-          const isGameOver = handleSentenceDrop(state);
+          const isGameOver = handleSentenceDrop(state, sentence, cfg, now);
           playSentenceDrop();
 
           // Impact particles
@@ -803,19 +816,31 @@ function GameArena({ config }: { config: GameConfig }) {
               )}
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3">
                 <button
-                  onClick={handlePlayAgain}
-                  className="neon-button flex-1"
+                  onClick={() => router.push('/words/completion')}
+                  className="neon-button w-full py-3.5 flex items-center justify-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(112, 0, 255, 0.25))',
+                    borderColor: 'var(--neon-cyan)',
+                  }}
                 >
-                  <span>🔄 Play Again</span>
+                  <span className="text-base">📜 Review All Sentences & Translations ({gameOverStats.sentenceHistory?.length || 0})</span>
                 </button>
-                <button
-                  onClick={() => router.push('/words')}
-                  className="flex-1 py-3 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80 transition-all font-[family-name:var(--font-mono)] text-sm font-semibold"
-                >
-                  ⬅ Back to Setup
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handlePlayAgain}
+                    className="flex-1 py-3 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/15 transition-all font-[family-name:var(--font-mono)] text-sm font-bold flex items-center justify-center gap-2"
+                  >
+                    <span>🔄 Play Again</span>
+                  </button>
+                  <button
+                    onClick={() => router.push('/words')}
+                    className="flex-1 py-3 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80 transition-all font-[family-name:var(--font-mono)] text-sm font-semibold"
+                  >
+                    ⬅ Back to Setup
+                  </button>
+                </div>
               </div>
             </div>
           </div>

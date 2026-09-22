@@ -70,6 +70,17 @@ export interface GameConfig {
   soundVolume: number; // 0-1
   sentences: string[];
   isCustomSource: boolean; // true if using custom text, affects pool exhaustion behavior
+  translations?: Record<string, string>; // english text -> vietnamese translation
+}
+
+/** Record of a sentence that went through the game session */
+export interface SentenceHistoryItem {
+  id: string;
+  text: string;
+  status: 'success' | 'failed';
+  wordCount: number;
+  translationVi?: string | null;
+  completedAt?: number;
 }
 
 /** Live game state (mutable via useRef for performance) */
@@ -95,6 +106,8 @@ export interface GameState {
   accuracy: number;
   /** Active falling sentences on screen */
   activeSentences: FallingSentence[];
+  /** Track record of all sentences that completed or dropped */
+  sentenceHistory: SentenceHistoryItem[];
   /** Remaining sentence pool (indices into the original array) */
   sentenceQueue: number[];
   /** Total sentences available */
@@ -144,6 +157,14 @@ export interface GameOverStats {
   elapsedTime: number;
   mistypedKeys: [string, number][]; // sorted by frequency desc
   isVictory: boolean;
+  sentenceHistory?: SentenceHistoryItem[];
+}
+
+/** Complete session data stored when navigating to completion page */
+export interface WordGameCompletionData {
+  stats: GameOverStats;
+  config: GameConfig;
+  sentences: SentenceHistoryItem[];
 }
 
 /** Particle effect type */

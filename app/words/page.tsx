@@ -75,6 +75,7 @@ export default function WordGameSetupPage() {
   }[]>(LIBRARY_CATEGORIES.map((c) => ({ ...c, slug: c.key })));
 
   const [dbSentences, setDbSentences] = useState<Record<string, string[]>>({});
+  const [dbTranslations, setDbTranslations] = useState<Record<string, string>>({});
   const [dbStatus, setDbStatus] = useState<'loading' | 'connected' | 'offline'>('loading');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -163,6 +164,9 @@ export default function WordGameSetupPage() {
           if (isMounted && senData.sentencesByCategory) {
             setDbSentences(senData.sentencesByCategory);
           }
+          if (isMounted && senData.translations) {
+            setDbTranslations(senData.translations);
+          }
         }
       } catch (err) {
         console.warn('Neon DB fetch failed, using fallback:', err);
@@ -206,6 +210,7 @@ export default function WordGameSetupPage() {
       soundVolume,
       sentences: source === 'custom' ? parsedCustom : sentencePool,
       isCustomSource: source === 'custom',
+      translations: dbTranslations,
     };
 
     // Store config in sessionStorage for the play page
@@ -590,7 +595,7 @@ export default function WordGameSetupPage() {
                 </div>
                 <input
                   type="range"
-                  min={20}
+                  min={5}
                   max={100}
                   step={5}
                   value={customSpeedPPS}

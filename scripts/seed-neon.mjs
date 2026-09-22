@@ -291,11 +291,16 @@ async function run() {
       id SERIAL PRIMARY KEY,
       category_slug VARCHAR(50) NOT NULL REFERENCES categories(slug) ON DELETE CASCADE,
       text TEXT NOT NULL,
+      translation_vi TEXT,
       word_count INT NOT NULL,
       difficulty VARCHAR(20) DEFAULT 'normal',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       CONSTRAINT uq_category_text UNIQUE(category_slug, text)
     );
+  `;
+
+  await sql`
+    ALTER TABLE sentences ADD COLUMN IF NOT EXISTS translation_vi TEXT;
   `;
 
   await sql`
@@ -318,14 +323,17 @@ async function run() {
   console.log('3. Inserting sentences...');
   let totalInserted = 0;
   for (const [categorySlug, sentences] of Object.entries(sentencesData)) {
-    for (const text of sentences) {
-      const wordCount = text.trim().split(/\s+/).length;
+    for (const item of sentences) {
+      const text = typeof item === 'string' ? item.trim() : item.text.trim();
+      const translationVi = typeof item === 'object' ? (item.translation_vi || item.vi || null) : null;
+      const wordCount = text.split(/\s+/).length;
       const difficulty = getDifficulty(wordCount);
       await sql`
-        INSERT INTO sentences (category_slug, text, word_count, difficulty)
-        VALUES (${categorySlug}, ${text}, ${wordCount}, ${difficulty})
+        INSERT INTO sentences (category_slug, text, translation_vi, word_count, difficulty)
+        VALUES (${categorySlug}, ${text}, ${translationVi}, ${wordCount}, ${difficulty})
         ON CONFLICT (category_slug, text) DO UPDATE
-        SET word_count = EXCLUDED.word_count,
+        SET translation_vi = COALESCE(EXCLUDED.translation_vi, sentences.translation_vi),
+            word_count = EXCLUDED.word_count,
             difficulty = EXCLUDED.difficulty;
       `;
       totalInserted++;

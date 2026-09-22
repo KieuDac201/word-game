@@ -31,14 +31,14 @@ export async function GET(request: Request) {
     if (category && difficulty) {
       const rows = limit
         ? await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE category_slug = ${category} AND difficulty = ${difficulty}
             ORDER BY RANDOM()
             LIMIT ${limit};
           `
         : await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE category_slug = ${category} AND difficulty = ${difficulty}
             ORDER BY RANDOM();
@@ -48,6 +48,7 @@ export async function GET(request: Request) {
       const items = (rows as any[]).map((r) => ({
         id: r.id,
         text: r.text,
+        translationVi: r.translation_vi || null,
         wordCount: r.word_count,
         difficulty: r.difficulty,
         categorySlug: r.category_slug,
@@ -69,14 +70,14 @@ export async function GET(request: Request) {
     if (category && !difficulty) {
       const rows = limit
         ? await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE category_slug = ${category}
             ORDER BY RANDOM()
             LIMIT ${limit};
           `
         : await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE category_slug = ${category}
             ORDER BY RANDOM();
@@ -86,6 +87,7 @@ export async function GET(request: Request) {
       const items = (rows as any[]).map((r) => ({
         id: r.id,
         text: r.text,
+        translationVi: r.translation_vi || null,
         wordCount: r.word_count,
         difficulty: r.difficulty,
         categorySlug: r.category_slug,
@@ -116,14 +118,14 @@ export async function GET(request: Request) {
     if (!category && difficulty) {
       const rows = limit
         ? await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE difficulty = ${difficulty}
             ORDER BY category_slug, RANDOM()
             LIMIT ${limit};
           `
         : await sql`
-            SELECT id, category_slug, text, word_count, difficulty
+            SELECT id, category_slug, text, translation_vi, word_count, difficulty
             FROM sentences
             WHERE difficulty = ${difficulty}
             ORDER BY category_slug, RANDOM();
@@ -133,6 +135,7 @@ export async function GET(request: Request) {
       const items = (rows as any[]).map((r) => ({
         id: r.id,
         text: r.text,
+        translationVi: r.translation_vi || null,
         wordCount: r.word_count,
         difficulty: r.difficulty,
         categorySlug: r.category_slug,
@@ -159,7 +162,7 @@ export async function GET(request: Request) {
     // Case 4: No Filters — Return all sentences grouped
     // ─────────────────────────────────────────────────────────────
     const allRows = await sql`
-      SELECT id, category_slug, text, word_count, difficulty
+      SELECT id, category_slug, text, translation_vi, word_count, difficulty
       FROM sentences
       ORDER BY category_slug, id;
     `;
@@ -167,6 +170,7 @@ export async function GET(request: Request) {
     const grouped: Record<string, string[]> = {};
     const groupedByDiff: Record<string, Record<string, string[]>> = {};
 
+    const translations: Record<string, string> = {};
     for (const r of allRows as any[]) {
       const cat = r.category_slug;
       const diff = r.difficulty;
@@ -178,12 +182,17 @@ export async function GET(request: Request) {
       if (groupedByDiff[cat][diff]) {
         groupedByDiff[cat][diff].push(r.text);
       }
+
+      if (r.translation_vi) {
+        translations[r.text] = r.translation_vi;
+      }
     }
 
     return NextResponse.json({
       count: (allRows as any[]).length,
       sentencesByCategory: grouped,
       sentencesByCategoryAndDifficulty: groupedByDiff,
+      translations,
       source: 'database',
     });
   } catch (error) {

@@ -44,11 +44,16 @@ export async function upsertCategoryAndSentences(category, sentencesData) {
       id SERIAL PRIMARY KEY,
       category_slug VARCHAR(50) NOT NULL REFERENCES categories(slug) ON DELETE CASCADE,
       text TEXT NOT NULL,
+      translation_vi TEXT,
       word_count INT NOT NULL,
       difficulty VARCHAR(20) DEFAULT 'normal',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       CONSTRAINT uq_category_text UNIQUE(category_slug, text)
     );
+  `;
+
+  await sql`
+    ALTER TABLE sentences ADD COLUMN IF NOT EXISTS translation_vi TEXT;
   `;
 
   // 1. Upsert category
@@ -66,18 +71,18 @@ export async function upsertCategoryAndSentences(category, sentencesData) {
   const items = [];
   const { easy = [], normal = [], hard = [] } = sentencesData;
 
-  for (const text of easy) {
-    const wc = text.trim().split(/\s+/).length;
-    items.push({ text: text.trim(), wordCount: wc, difficulty: 'easy' });
-  }
-  for (const text of normal) {
-    const wc = text.trim().split(/\s+/).length;
-    items.push({ text: text.trim(), wordCount: wc, difficulty: 'normal' });
-  }
-  for (const text of hard) {
-    const wc = text.trim().split(/\s+/).length;
-    items.push({ text: text.trim(), wordCount: wc, difficulty: 'hard' });
-  }
+  const processList = (list, diff) => {
+    for (const item of list) {
+      const text = typeof item === 'string' ? item.trim() : item.text.trim();
+      const translationVi = typeof item === 'object' ? (item.translation_vi || item.vi || null) : null;
+      const wc = text.split(/\s+/).length;
+      items.push({ text, translationVi, wordCount: wc, difficulty: diff });
+    }
+  };
+
+  processList(easy, 'easy');
+  processList(normal, 'normal');
+  processList(hard, 'hard');
 
   // 3. Batch insert sentences in chunks of 50 to avoid huge queries
   const CHUNK_SIZE = 50;
@@ -88,10 +93,11 @@ export async function upsertCategoryAndSentences(category, sentencesData) {
     await Promise.all(
       chunk.map((item) =>
         sql`
-          INSERT INTO sentences (category_slug, text, word_count, difficulty)
-          VALUES (${category.slug}, ${item.text}, ${item.wordCount}, ${item.difficulty})
+          INSERT INTO sentences (category_slug, text, translation_vi, word_count, difficulty)
+          VALUES (${category.slug}, ${item.text}, ${item.translationVi}, ${item.wordCount}, ${item.difficulty})
           ON CONFLICT (category_slug, text) DO UPDATE
-          SET word_count = EXCLUDED.word_count,
+          SET translation_vi = COALESCE(EXCLUDED.translation_vi, sentences.translation_vi),
+              word_count = EXCLUDED.word_count,
               difficulty = EXCLUDED.difficulty;
         `
       )

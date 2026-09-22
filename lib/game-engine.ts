@@ -48,6 +48,7 @@ export function createInitialState(config: GameConfig): GameState {
     currentWpm: 0,
     accuracy: 100,
     activeSentences: [],
+    sentenceHistory: [],
     sentenceQueue: buildSentenceQueue(config.sentences.length),
     totalSentences: config.sentences.length,
     sentencesUsed: 0,
@@ -327,6 +328,16 @@ export function handleKeystroke(
         );
         state.score += score;
 
+        // Record to history
+        state.sentenceHistory.push({
+          id: target.id,
+          text: target.text,
+          status: 'success',
+          wordCount: target.words.length,
+          translationVi: config.translations?.[target.text] || null,
+          completedAt: currentTime,
+        });
+
         // Combo
         state.combo = incrementCombo(state.combo);
         if (state.combo > state.maxCombo) state.maxCombo = state.combo;
@@ -348,10 +359,25 @@ export function handleKeystroke(
  * Process a sentence that hit the danger line.
  * Returns true if game over (lives === 0).
  */
-export function handleSentenceDrop(state: GameState): boolean {
+export function handleSentenceDrop(
+  state: GameState,
+  sentence?: FallingSentence,
+  config?: GameConfig,
+  currentTime?: number
+): boolean {
   state.lives--;
   state.combo = 1; // Reset combo on drop
   state.sentencesDropped++;
+  if (sentence) {
+    state.sentenceHistory.push({
+      id: sentence.id,
+      text: sentence.text,
+      status: 'failed',
+      wordCount: sentence.words.length,
+      translationVi: config?.translations?.[sentence.text] || null,
+      completedAt: currentTime,
+    });
+  }
   return state.lives <= 0;
 }
 

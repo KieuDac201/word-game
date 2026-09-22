@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { LIBRARY_CATEGORIES } from '@/lib/constants';
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/data/db";
+import { LIBRARY_CATEGORIES } from "@/lib/data/fallback";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -31,10 +31,13 @@ export async function GET() {
         displayOrder: r.display_order,
         sentenceCount: Number(r.sentence_count || 0),
       }));
-      return NextResponse.json({ categories: data, source: 'database' });
+      return NextResponse.json({ categories: data, source: "database" });
     }
   } catch (error) {
-    console.error('Failed to fetch categories from Neon DB, falling back to constants:', error);
+    console.error(
+      "Failed to fetch categories from Neon DB, falling back to constants:",
+      error,
+    );
   }
 
   // Fallback if DB is unavailable
@@ -44,6 +47,6 @@ export async function GET() {
       slug: c.key,
       sentenceCount: 0,
     })),
-    source: 'fallback',
+    source: "fallback",
   });
 }

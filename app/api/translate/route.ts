@@ -1,25 +1,29 @@
-import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/data/db";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 async function fetchMyMemoryTranslation(text: string): Promise<string | null> {
   try {
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.trim())}&langpair=en|vi`;
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; WordGameBot/1.0)',
+        "User-Agent": "Mozilla/5.0 (compatible; WordGameBot/1.0)",
       },
     });
     if (!res.ok) return null;
     const data = await res.json();
     const translated = data?.responseData?.translatedText;
-    if (translated && typeof translated === 'string' && !translated.startsWith('MYMEMORY WARNING:')) {
+    if (
+      translated &&
+      typeof translated === "string" &&
+      !translated.startsWith("MYMEMORY WARNING:")
+    ) {
       return translated.trim();
     }
     return null;
   } catch (err) {
-    console.warn('MyMemory translation error:', err);
+    console.warn("MyMemory translation error:", err);
     return null;
   }
 }
@@ -30,14 +34,16 @@ export async function POST(request: Request) {
     const texts: string[] = Array.isArray(body.texts)
       ? body.texts
       : body.text
-      ? [body.text]
-      : [];
+        ? [body.text]
+        : [];
 
     if (texts.length === 0) {
       return NextResponse.json({ translations: {} });
     }
 
-    const uniqueTexts = Array.from(new Set(texts.map((t) => t.trim()).filter(Boolean)));
+    const uniqueTexts = Array.from(
+      new Set(texts.map((t) => t.trim()).filter(Boolean)),
+    );
     const translations: Record<string, string> = {};
 
     let sql: any = null;
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
           }
         }
       } catch (err) {
-        console.warn('Failed querying DB for translations:', err);
+        console.warn("Failed querying DB for translations:", err);
       }
     }
 
@@ -92,7 +98,7 @@ export async function POST(request: Request) {
             }
           }
         }
-      })
+      }),
     );
 
     return NextResponse.json({
@@ -100,7 +106,10 @@ export async function POST(request: Request) {
       translations,
     });
   } catch (error) {
-    console.error('Translation route error:', error);
-    return NextResponse.json({ success: false, translations: {} }, { status: 500 });
+    console.error("Translation route error:", error);
+    return NextResponse.json(
+      { success: false, translations: {} },
+      { status: 500 },
+    );
   }
 }

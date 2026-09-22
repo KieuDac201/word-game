@@ -1,25 +1,26 @@
-import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { SENTENCE_LIBRARIES, DIFFICULTY_CONFIGS } from '@/lib/constants';
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/data/db";
+import { SENTENCE_LIBRARIES } from "@/lib/data/fallback";
+import { DIFFICULTY_WORD_RANGES } from "@/lib/core/constants";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   // Support category, categoryId, or category_slug
   const categoryParam =
-    searchParams.get('category') ||
-    searchParams.get('categoryId') ||
-    searchParams.get('category_slug');
+    searchParams.get("category") ||
+    searchParams.get("categoryId") ||
+    searchParams.get("category_slug");
   const category = categoryParam ? categoryParam.toLowerCase().trim() : null;
 
   // Support difficulty filter ('easy', 'normal', 'hard')
-  const diffParam = searchParams.get('difficulty');
+  const diffParam = searchParams.get("difficulty");
   const difficulty = diffParam ? diffParam.toLowerCase().trim() : null;
 
   // Support limit
-  const limitParam = searchParams.get('limit');
+  const limitParam = searchParams.get("limit");
   const limit = limitParam ? Math.max(1, parseInt(limitParam, 10)) : null;
 
   try {
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
         count: sentences.length,
         sentences,
         items,
-        source: 'database',
+        source: "database",
       });
     }
 
@@ -94,7 +95,11 @@ export async function GET(request: Request) {
       }));
 
       // Also group by difficulty for convenience
-      const byDifficulty: Record<string, string[]> = { easy: [], normal: [], hard: [] };
+      const byDifficulty: Record<string, string[]> = {
+        easy: [],
+        normal: [],
+        hard: [],
+      };
       for (const r of rows as any[]) {
         if (byDifficulty[r.difficulty]) {
           byDifficulty[r.difficulty].push(r.text);
@@ -108,7 +113,7 @@ export async function GET(request: Request) {
         sentences,
         items,
         sentencesByDifficulty: byDifficulty,
-        source: 'database',
+        source: "database",
       });
     }
 
@@ -154,7 +159,7 @@ export async function GET(request: Request) {
         sentences,
         items,
         sentencesByCategory: grouped,
-        source: 'database',
+        source: "database",
       });
     }
 
@@ -178,7 +183,8 @@ export async function GET(request: Request) {
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(r.text);
 
-      if (!groupedByDiff[cat]) groupedByDiff[cat] = { easy: [], normal: [], hard: [] };
+      if (!groupedByDiff[cat])
+        groupedByDiff[cat] = { easy: [], normal: [], hard: [] };
       if (groupedByDiff[cat][diff]) {
         groupedByDiff[cat][diff].push(r.text);
       }
@@ -193,24 +199,32 @@ export async function GET(request: Request) {
       sentencesByCategory: grouped,
       sentencesByCategoryAndDifficulty: groupedByDiff,
       translations,
-      source: 'database',
+      source: "database",
     });
   } catch (error) {
-    console.error('Failed to fetch sentences from Neon DB, falling back to constants:', error);
+    console.error(
+      "Failed to fetch sentences from Neon DB, falling back to constants:",
+      error,
+    );
 
     // Fallback: Filter in-memory constants by word count range
     const filterByDiffRange = (texts: string[], diff: string) => {
-      const cfg = DIFFICULTY_CONFIGS[diff as keyof typeof DIFFICULTY_CONFIGS];
-      if (!cfg) return texts;
-      const [minW, maxW] = cfg.wordCountRange;
+      const range =
+        DIFFICULTY_WORD_RANGES[diff as keyof typeof DIFFICULTY_WORD_RANGES];
+      if (!range) return texts;
+      const [minW, maxW] = range;
       return texts.filter((s) => {
         const words = s.split(/\s+/).length;
         return words >= minW && words <= maxW;
       });
     };
 
-    if (category && SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES]) {
-      let list = SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES];
+    if (
+      category &&
+      SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES]
+    ) {
+      let list =
+        SENTENCE_LIBRARIES[category as keyof typeof SENTENCE_LIBRARIES];
       if (difficulty) {
         list = filterByDiffRange(list, difficulty);
       }
@@ -223,10 +237,10 @@ export async function GET(request: Request) {
           id: idx,
           text,
           wordCount: text.split(/\s+/).length,
-          difficulty: difficulty || 'normal',
+          difficulty: difficulty || "normal",
           categorySlug: category,
         })),
-        source: 'fallback',
+        source: "fallback",
       });
     }
 
@@ -244,13 +258,13 @@ export async function GET(request: Request) {
         count: flat.length,
         sentences: flat,
         sentencesByCategory: grouped,
-        source: 'fallback',
+        source: "fallback",
       });
     }
 
     return NextResponse.json({
       sentencesByCategory: SENTENCE_LIBRARIES,
-      source: 'fallback',
+      source: "fallback",
     });
   }
 }

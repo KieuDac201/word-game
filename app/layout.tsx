@@ -15,9 +15,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Falling Sentences | Arcade Typing Practice Game",
+  title: "English Game Hub | Practice English Through Play",
   description:
-    "Master your typing speed with this arcade-style falling sentence game. Type words before they hit the ground!",
+    "A hub of arcade-style games for practising English typing, grammar, and vocabulary, with Vietnamese translations.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

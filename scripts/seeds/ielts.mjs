@@ -1,5 +1,5 @@
 import { upsertCategoryAndSentences } from './seed-helper.mjs';
-import { ieltsEasy, ieltsNormal, ieltsHard } from '../seed-ielts-200.mjs';
+import { ieltsEasy, ieltsNormal, ieltsHard } from '../db/seed-ielts-200.mjs';
 
 export const category = {
   slug: 'ielts',

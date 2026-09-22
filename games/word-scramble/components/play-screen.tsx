@@ -21,6 +21,7 @@ import {
   playWordComplete,
   playSentenceDestroy,
   playVictory,
+  playUIClick,
   setEnabled as setAudioEnabled,
 } from "@/lib/core/audio";
 
@@ -62,6 +63,7 @@ export default function PlayScreen() {
   const [validationState, setValidationState] = useState<
     "idle" | "success" | "error"
   >("idle");
+  const [earnedPoints, setEarnedPoints] = useState(0);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(1);
   const [maxCombo, setMaxCombo] = useState(1);
@@ -133,7 +135,7 @@ export default function PlayScreen() {
 
   // Timer loop
   useEffect(() => {
-    if (loading || isPaused || isCompleted) return;
+    if (loading || isPaused || isCompleted || validationState === "success") return;
 
     timerRef.current = setInterval(() => {
       setSentenceTime((prev) => prev + 1);
@@ -143,7 +145,7 @@ export default function PlayScreen() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [loading, isPaused, isCompleted]);
+  }, [loading, isPaused, isCompleted, validationState]);
 
   // Setup current sentence with fixed depot slots
   const initSentence = useCallback(
@@ -438,13 +440,16 @@ export default function PlayScreen() {
   };
 
   const sentenceTimeRef = useRef(sentenceTime);
-  sentenceTimeRef.current = sentenceTime;
   const currentIndexRef = useRef(currentIndex);
-  currentIndexRef.current = currentIndex;
   const sentencesRef = useRef(sentences);
-  sentencesRef.current = sentences;
   const comboRef = useRef(combo);
-  comboRef.current = combo;
+
+  useEffect(() => {
+    sentenceTimeRef.current = sentenceTime;
+    currentIndexRef.current = currentIndex;
+    sentencesRef.current = sentences;
+    comboRef.current = combo;
+  }, [sentenceTime, currentIndex, sentences, combo]);
 
   // ─────────────────────────────────────────────────────────────
   // Verification & Train Launch
@@ -473,6 +478,7 @@ export default function PlayScreen() {
         (basePoints + wordBonus + speedBonus) * currentCombo,
       );
 
+      setEarnedPoints(points);
       setScore((s) => s + points);
       setCombo((c) => {
         const next = Math.min(5, c + 0.5);
@@ -495,10 +501,6 @@ export default function PlayScreen() {
           },
         ]);
       }
-
-      setTimeout(() => {
-        setCurrentIndex((i) => i + 1);
-      }, 900);
     } else {
       playMistypeThud();
       setValidationState("error");
@@ -506,6 +508,12 @@ export default function PlayScreen() {
       setTimeout(() => setValidationState("idle"), 600);
     }
   }, [railSlots, allTokens.length]);
+
+  const handleNextSentence = useCallback(() => {
+    if (validationState !== "success") return;
+    playUIClick();
+    setCurrentIndex((i) => i + 1);
+  }, [validationState]);
 
   // Auto-verify when last word placed
   useEffect(() => {
@@ -523,11 +531,16 @@ export default function PlayScreen() {
     function handleKeyDown(e: KeyboardEvent) {
       if (isPaused || isCompleted) return;
 
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || (e.code === "Space" && validationState === "success")) {
         e.preventDefault();
-        verifySentence();
+        if (validationState === "success") {
+          handleNextSentence();
+        } else {
+          verifySentence();
+        }
       } else if (
         e.key === "Backspace" &&
+        validationState !== "success" &&
         (e.metaKey || e.ctrlKey || railSlots.some(Boolean))
       ) {
         for (let i = railSlots.length - 1; i >= 0; i--) {
@@ -536,16 +549,26 @@ export default function PlayScreen() {
             break;
           }
         }
-      } else if (e.key === "Escape") {
+      } else if (e.key === "Escape" && validationState !== "success") {
         handleClearRail();
-      } else if (e.key.toLowerCase() === "h") {
+      } else if (e.key.toLowerCase() === "h" && validationState !== "success") {
         handleMagnetHint();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPaused, isCompleted, railSlots, verifySentence]);
+  }, [
+    isPaused,
+    isCompleted,
+    validationState,
+    railSlots,
+    verifySentence,
+    handleNextSentence,
+    handleClearRail,
+    handleMagnetHint,
+    handleRailWordClick,
+  ]);
 
   // Format time (MM:SS)
   const formatTime = (secs: number) => {
@@ -703,13 +726,44 @@ export default function PlayScreen() {
 
           {/* Success Overlay Banner */}
           {validationState === "success" && (
-            <div className="absolute inset-0 bg-[var(--neon-green)]/15 backdrop-blur-[2px] rounded-2xl flex items-center justify-center z-20 animate-scale-in">
-              <div className="text-center">
-                <span className="text-2xl sm:text-3xl">⚡</span>
-                <div className="text-base sm:text-lg font-extrabold font-[family-name:var(--font-mono)] text-[var(--neon-green)] tracking-wider">
-                  TRAIN COUPLED! +{(200 * combo).toFixed(0)} PTS
-                </div>
+            <div className="absolute inset-0 bg-black/75 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center p-4 sm:p-6 z-20 animate-scale-in text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--neon-green)]/20 border border-[var(--neon-green)]/40 flex items-center justify-center text-2xl mb-2 shadow-[0_0_25px_rgba(0,255,136,0.3)] animate-bounce">
+                ⚡
               </div>
+
+              <div className="text-xs sm:text-sm font-extrabold font-[family-name:var(--font-mono)] text-[var(--neon-green)] uppercase tracking-wider mb-2">
+                TRAIN COUPLED! +{earnedPoints} PTS
+              </div>
+
+              {/* English Sentence */}
+              <div className="text-sm sm:text-base md:text-lg font-semibold text-white max-w-lg px-4 leading-snug">
+                &ldquo;{sentences[currentIndex]?.text}&rdquo;
+              </div>
+
+              {/* Vietnamese Translation */}
+              {sentences[currentIndex]?.translationVi && (
+                <div className="text-xs sm:text-sm text-[var(--neon-cyan)]/90 italic font-medium max-w-md px-4 mt-1.5 mb-1">
+                  {sentences[currentIndex].translationVi}
+                </div>
+              )}
+
+              {/* Next Sentence Button */}
+              <button
+                type="button"
+                autoFocus
+                onClick={handleNextSentence}
+                className="mt-4 px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl font-bold font-[family-name:var(--font-mono)] text-xs sm:text-sm uppercase tracking-wider text-black bg-gradient-to-r from-[var(--neon-green)] to-[var(--neon-cyan)] hover:opacity-95 active:scale-95 transition-all shadow-[0_0_25px_rgba(0,255,136,0.4)] cursor-pointer flex items-center gap-2"
+              >
+                <span>
+                  {currentIndex + 1 >= sentences.length
+                    ? "View Results"
+                    : "Next Sentence"}
+                </span>
+                <span className="text-sm">➔</span>
+                <span className="text-[10px] text-black/60 font-semibold ml-1 py-0.5 px-1.5 rounded bg-black/15 hidden sm:inline">
+                  ↵ Enter
+                </span>
+              </button>
             </div>
           )}
         </div>
@@ -720,7 +774,12 @@ export default function PlayScreen() {
             <button
               type="button"
               onClick={handleClearRail}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-[family-name:var(--font-mono)] text-white/70 hover:text-white transition-all flex items-center gap-1"
+              disabled={validationState === "success"}
+              className={`px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border text-xs font-[family-name:var(--font-mono)] transition-all flex items-center gap-1 ${
+                validationState === "success"
+                  ? "bg-white/5 border-white/5 text-white/30 cursor-not-allowed"
+                  : "bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-white"
+              }`}
             >
               <span>↺ Clear</span>
             </button>
@@ -728,7 +787,12 @@ export default function PlayScreen() {
               <button
                 type="button"
                 onClick={handleMagnetHint}
-                className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-[var(--neon-purple)]/15 hover:bg-[var(--neon-purple)]/25 border border-[var(--neon-purple)]/40 text-xs font-[family-name:var(--font-mono)] text-[var(--neon-purple)] transition-all flex items-center gap-1"
+                disabled={validationState === "success"}
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg border text-xs font-[family-name:var(--font-mono)] transition-all flex items-center gap-1 ${
+                  validationState === "success"
+                    ? "bg-[var(--neon-purple)]/5 border-[var(--neon-purple)]/10 text-[var(--neon-purple)]/30 cursor-not-allowed"
+                    : "bg-[var(--neon-purple)]/15 hover:bg-[var(--neon-purple)]/25 border-[var(--neon-purple)]/40 text-[var(--neon-purple)]"
+                }`}
               >
                 <span>🧲 Hint</span>
                 {hintsUsed > 0 && (
@@ -740,14 +804,29 @@ export default function PlayScreen() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={verifySentence}
-            className="px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-bold font-[family-name:var(--font-mono)] text-xs uppercase tracking-wider text-black bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] hover:opacity-90 active:scale-95 transition-all shadow-[0_0_15px_rgba(0,240,255,0.2)] cursor-pointer flex items-center gap-1.5"
-          >
-            <span>Launch Train</span>
-            <span>🚀</span>
-          </button>
+          {validationState === "success" ? (
+            <button
+              type="button"
+              onClick={handleNextSentence}
+              className="px-5 py-2 sm:px-6 sm:py-2 rounded-xl font-bold font-[family-name:var(--font-mono)] text-xs uppercase tracking-wider text-black bg-gradient-to-r from-[var(--neon-green)] to-[var(--neon-cyan)] hover:opacity-95 active:scale-95 transition-all shadow-[0_0_20px_rgba(0,255,136,0.3)] cursor-pointer flex items-center gap-1.5"
+            >
+              <span>
+                {currentIndex + 1 >= sentences.length
+                  ? "View Results"
+                  : "Next Sentence"}
+              </span>
+              <span>➔</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={verifySentence}
+              className="px-4 py-2 sm:px-5 sm:py-2 rounded-xl font-bold font-[family-name:var(--font-mono)] text-xs uppercase tracking-wider text-black bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] hover:opacity-90 active:scale-95 transition-all shadow-[0_0_15px_rgba(0,240,255,0.2)] cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Launch Train</span>
+              <span>🚀</span>
+            </button>
+          )}
         </div>
 
         {/* ─── THE DEPOT YARD (Fixed Placeholder Positions) ─── */}

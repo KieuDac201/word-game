@@ -11,29 +11,29 @@ const ICE_SERVERS: RTCIceServer[] = [
   // Google STUN (free, high availability)
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  // OpenRelay free TURN servers
+  // Metered.ca TURN servers (free tier, 20GB/month)
   {
     urls: "stun:stun.relay.metered.ca:80",
   },
   {
     urls: "turn:global.relay.metered.ca:80",
-    username: "e8dd65b92f6bce436e4d2e6c",
-    credential: "5VoqBSj3lApKT/f2",
+    username: "905bb6ca6dee1d636b121c45",
+    credential: "eHFcUOx2peviTV4L",
   },
   {
     urls: "turn:global.relay.metered.ca:80?transport=tcp",
-    username: "e8dd65b92f6bce436e4d2e6c",
-    credential: "5VoqBSj3lApKT/f2",
+    username: "905bb6ca6dee1d636b121c45",
+    credential: "eHFcUOx2peviTV4L",
   },
   {
     urls: "turn:global.relay.metered.ca:443",
-    username: "e8dd65b92f6bce436e4d2e6c",
-    credential: "5VoqBSj3lApKT/f2",
+    username: "905bb6ca6dee1d636b121c45",
+    credential: "eHFcUOx2peviTV4L",
   },
   {
     urls: "turns:global.relay.metered.ca:443?transport=tcp",
-    username: "e8dd65b92f6bce436e4d2e6c",
-    credential: "5VoqBSj3lApKT/f2",
+    username: "905bb6ca6dee1d636b121c45",
+    credential: "eHFcUOx2peviTV4L",
   },
 ];
 

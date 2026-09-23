@@ -358,9 +358,14 @@ export default function WordChainSetupScreen() {
               <div className="text-[11px] text-white/50 font-mono mt-0.5">Shiritori Rule</div>
             </div>
             <div className="p-2.5 rounded-lg bg-white/5">
-              <div className="text-base">📚 370k+</div>
-              <div className="text-[11px] text-white/50 font-mono mt-0.5">All Words Valid</div>
+              <div className="text-base">⚡ Time Steal</div>
+              <div className="text-[11px] text-white/50 font-mono mt-0.5">5L: -3s • 7L+: -5s</div>
             </div>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-[var(--neon-yellow)]/5 border border-[var(--neon-yellow)]/20 text-center text-xs font-mono text-[var(--neon-yellow)] flex items-center justify-center gap-2">
+            <span>🔥</span>
+            <span>Play longer words to steal seconds from your opponent's turn timer!</span>
           </div>
 
           {/* Start CTA */}

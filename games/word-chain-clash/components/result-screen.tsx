@@ -206,8 +206,20 @@ export default function WordChainResultScreen() {
                   ) : null}
                 </div>
 
-                <div className="text-right text-[10px] sm:text-xs font-mono text-white/40 shrink-0">
-                  {c.word.length}L
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {c.tier === "power" && (
+                    <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-mono font-bold flex items-center gap-0.5">
+                      🔥 -5s
+                    </span>
+                  )}
+                  {c.tier === "strong" && (
+                    <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] font-mono font-bold flex items-center gap-0.5">
+                      ⚡ -3s
+                    </span>
+                  )}
+                  <span className="text-[10px] sm:text-xs font-mono text-white/40">
+                    {c.word.length}L
+                  </span>
                 </div>
               </div>
             ))}

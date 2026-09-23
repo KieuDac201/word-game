@@ -22,19 +22,21 @@ import {
   checkMoveRules,
   getRandomStarterWord,
   pickBotWord,
+  getWordTier,
+  getTimerStealSeconds,
 } from "../engine";
 import { validateWord, loadFullDictionary, getWordDetails } from "../dictionary";
 import { P2PManager, type PeerStatus } from "../webrtc";
-import { BOT_PROFILES } from "../config";
+import { BOT_PROFILES, DEFAULT_CONFIG, MIN_TIMER_FLOOR } from "../config";
 import type {
   PlayerId,
   PlayerState,
   ChainWord,
   P2PMessage,
   GameResultPayload,
+  WordTier,
 } from "../types";
 import type { ClashSessionConfig } from "../session";
-import { DEFAULT_CONFIG } from "../config";
 
 export default function WordChainPlayScreen() {
   const router = useRouter();
@@ -135,6 +137,15 @@ export default function WordChainPlayScreen() {
   const [inputError, setInputError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [screenShake, setScreenShake] = useState<boolean>(false);
+
+  // Time Steal & Feedback Animation State
+  const [stealNotification, setStealNotification] = useState<{
+    id: number;
+    amount: number;
+    tier: WordTier;
+    targetPlayer: PlayerId;
+  } | null>(null);
+  const [timerFlashed, setTimerFlashed] = useState<boolean>(false);
 
   const matchStartTimestamp = useRef<number | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -346,6 +357,8 @@ export default function WordChainPlayScreen() {
     async (word: string, by: PlayerId, byName: string) => {
       const cleanWord = word.trim().toLowerCase();
       const lastChar = getLastLetter(cleanWord).toUpperCase();
+      const tier = getWordTier(cleanWord);
+      const stealAmount = getTimerStealSeconds(cleanWord);
 
       playWordComplete();
 
@@ -359,12 +372,37 @@ export default function WordChainPlayScreen() {
         timestamp: Date.now(),
         definition: details.definition,
         translationVi: details.translationVi,
+        tier,
+        timerSteal: stealAmount,
       };
 
       setChain((prev) => [newChainItem, ...prev]);
       setUsedWords((prev) => new Set(prev).add(cleanWord));
       setRequiredLetter(lastChar);
-      setTimeLeft(maxTurnSecondsRef.current);
+
+      // Switch turn
+      const nextTurn = by === "player1" ? "player2" : "player1";
+      setCurrentTurn(nextTurn);
+
+      // Calculate opponent starting timer with steal deduction (floored at MIN_TIMER_FLOOR)
+      const nextStartingSeconds = Math.max(
+        MIN_TIMER_FLOOR,
+        maxTurnSecondsRef.current - stealAmount
+      );
+      setTimeLeft(nextStartingSeconds);
+
+      // Trigger steal notification and timer flash if any time was stolen
+      if (stealAmount > 0) {
+        setStealNotification({
+          id: Date.now(),
+          amount: stealAmount,
+          tier,
+          targetPlayer: nextTurn,
+        });
+        setTimerFlashed(true);
+        setTimeout(() => setTimerFlashed(false), 800);
+        setTimeout(() => setStealNotification(null), 1400);
+      }
 
       if (by === "player1") {
         setP1((prev) => ({
@@ -379,10 +417,6 @@ export default function WordChainPlayScreen() {
           totalLetters: prev.totalLetters + cleanWord.length,
         }));
       }
-
-      // Switch turn
-      const nextTurn = by === "player1" ? "player2" : "player1";
-      setCurrentTurn(nextTurn);
     },
     []
   );
@@ -828,66 +862,90 @@ export default function WordChainPlayScreen() {
                 </div>
               </div>
 
-              {/* Big Circular Countdown Clock with Linear Progress Arc */}
-              <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center shrink-0">
-                <svg
-                  className="absolute inset-0 w-full h-full -rotate-90"
-                  viewBox="0 0 64 64"
-                >
-                  {/* Background Track Circle */}
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="26"
-                    stroke="rgba(255, 255, 255, 0.1)"
-                    strokeWidth="3.5"
-                    fill="transparent"
-                  />
-                  {/* Linear Depletion Progress Circle */}
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="26"
-                    stroke={
-                      timeLeft <= 5
-                        ? "#ef4444"
-                        : timeLeft <= 10
-                        ? "#facc15"
-                        : "var(--neon-cyan)"
-                    }
-                    strokeWidth="3.5"
-                    strokeDasharray={2 * Math.PI * 26}
-                    strokeDashoffset={
-                      -(2 * Math.PI * 26) *
-                      (1 - Math.max(0, Math.min(1, timeLeft / maxTurnSeconds)))
-                    }
-                    strokeLinecap="round"
-                    fill={timeLeft <= 5 ? "rgba(239, 68, 68, 0.12)" : "transparent"}
-                    style={{
-                      transition:
-                        "stroke-dashoffset 1s linear, stroke 0.3s ease, fill 0.3s ease",
-                    }}
-                    className={
-                      timeLeft <= 5
-                        ? "drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]"
-                        : timeLeft <= 10
-                        ? "drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]"
-                        : "drop-shadow-[0_0_6px_rgba(6,182,212,0.6)]"
-                    }
-                  />
-                </svg>
+              {/* Big Circular Countdown Clock with Linear Progress Arc & Time Steal Indicator */}
+              <div className="relative flex items-center justify-center shrink-0">
+                {/* Floating Time Steal Popup Animation */}
+                {stealNotification && (
+                  <div
+                    key={stealNotification.id}
+                    className="absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none z-30 animate-timer-steal whitespace-nowrap"
+                  >
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-black border shadow-lg flex items-center gap-1 ${
+                        stealNotification.tier === "power"
+                          ? "bg-red-600 text-white border-red-300 shadow-[0_0_18px_rgba(239,68,68,0.9)]"
+                          : "bg-yellow-400 text-black border-yellow-200 shadow-[0_0_18px_rgba(250,204,21,0.9)]"
+                      }`}
+                    >
+                      {stealNotification.tier === "power" ? "🔥" : "⚡"} -{stealNotification.amount}s TIME STEAL!
+                    </span>
+                  </div>
+                )}
 
-                {/* Text Countdown Value */}
                 <div
-                  className={`relative font-mono font-black text-sm sm:text-base tracking-tight transition-colors ${
-                    timeLeft <= 5
-                      ? "text-red-400 animate-pulse"
-                      : timeLeft <= 10
-                      ? "text-yellow-300"
-                      : "text-white"
+                  className={`relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center transition-all ${
+                    timerFlashed ? "animate-timer-flash" : ""
                   }`}
                 >
-                  {timeLeft}s
+                  <svg
+                    className="absolute inset-0 w-full h-full -rotate-90"
+                    viewBox="0 0 64 64"
+                  >
+                    {/* Background Track Circle */}
+                    <circle
+                      cx="32"
+                      cy="32"
+                      r="26"
+                      stroke="rgba(255, 255, 255, 0.1)"
+                      strokeWidth="3.5"
+                      fill="transparent"
+                    />
+                    {/* Linear Depletion Progress Circle */}
+                    <circle
+                      cx="32"
+                      cy="32"
+                      r="26"
+                      stroke={
+                        timerFlashed || timeLeft <= 5
+                          ? "#ef4444"
+                          : timeLeft <= 10
+                          ? "#facc15"
+                          : "var(--neon-cyan)"
+                      }
+                      strokeWidth="3.5"
+                      strokeDasharray={2 * Math.PI * 26}
+                      strokeDashoffset={
+                        -(2 * Math.PI * 26) *
+                        (1 - Math.max(0, Math.min(1, timeLeft / maxTurnSeconds)))
+                      }
+                      strokeLinecap="round"
+                      fill={timerFlashed || timeLeft <= 5 ? "rgba(239, 68, 68, 0.16)" : "transparent"}
+                      style={{
+                        transition:
+                          "stroke-dashoffset 1s linear, stroke 0.3s ease, fill 0.3s ease",
+                      }}
+                      className={
+                        timerFlashed || timeLeft <= 5
+                          ? "drop-shadow-[0_0_12px_rgba(239,68,68,0.9)]"
+                          : timeLeft <= 10
+                          ? "drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]"
+                          : "drop-shadow-[0_0_6px_rgba(6,182,212,0.6)]"
+                      }
+                    />
+                  </svg>
+
+                  {/* Text Countdown Value */}
+                  <div
+                    className={`relative font-mono font-black text-sm sm:text-base tracking-tight transition-colors ${
+                      timerFlashed || timeLeft <= 5
+                        ? "text-red-400 animate-pulse"
+                        : timeLeft <= 10
+                        ? "text-yellow-300"
+                        : "text-white"
+                    }`}
+                  >
+                    {timeLeft}s
+                  </div>
                 </div>
               </div>
 
@@ -1005,7 +1063,17 @@ export default function WordChainPlayScreen() {
                     ) : null}
                   </div>
 
-                  <div className="text-right shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.tier === "power" && (
+                      <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-mono font-bold flex items-center gap-0.5">
+                        🔥 -5s
+                      </span>
+                    )}
+                    {item.tier === "strong" && (
+                      <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] font-mono font-bold flex items-center gap-0.5">
+                        ⚡ -3s
+                      </span>
+                    )}
                     <span className="text-[10px] sm:text-xs font-mono text-white/30">
                       {item.word.length}L
                     </span>

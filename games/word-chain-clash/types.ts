@@ -14,6 +14,8 @@ export interface PlayerState {
   isBot?: boolean;
 }
 
+export type WordTier = "normal" | "strong" | "power";
+
 export interface ChainWord {
   id: string;
   word: string;
@@ -22,6 +24,8 @@ export interface ChainWord {
   timestamp: number;
   definition?: string;
   translationVi?: string;
+  tier?: WordTier;
+  timerSteal?: number;
 }
 
 export interface WordChainConfig {

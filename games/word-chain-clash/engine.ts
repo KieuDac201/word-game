@@ -1,6 +1,29 @@
 import { BOT_VOCABULARY } from "./bot-vocabulary";
 import { STARTER_WORDS } from "./config";
-import type { BotDifficulty } from "./types";
+import type { BotDifficulty, WordTier } from "./types";
+
+/**
+ * Categorizes a word into a tier based on length.
+ * 3-4 letters: normal (0s steal)
+ * 5-6 letters: strong (3s steal)
+ * 7+ letters: power (5s steal)
+ */
+export function getWordTier(word: string): WordTier {
+  const len = word.trim().length;
+  if (len >= 7) return "power";
+  if (len >= 5) return "strong";
+  return "normal";
+}
+
+/**
+ * Returns the number of seconds stolen from the opponent's next turn.
+ */
+export function getTimerStealSeconds(word: string): number {
+  const tier = getWordTier(word);
+  if (tier === "power") return 5;
+  if (tier === "strong") return 3;
+  return 0;
+}
 
 /**
  * Returns the ending letter of a word in lowercase.

@@ -2,6 +2,49 @@ import type Peer from "peerjs";
 import type { DataConnection } from "peerjs";
 import type { P2PMessage } from "./types";
 
+/**
+ * ICE server configuration for cross-network WebRTC connectivity.
+ * Includes STUN for IP discovery and TURN for relaying traffic
+ * when direct peer-to-peer connections fail (NAT, firewalls, mobile networks).
+ */
+const ICE_SERVERS: RTCIceServer[] = [
+  // Google STUN (free, high availability)
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  // OpenRelay free TURN servers
+  {
+    urls: "stun:stun.relay.metered.ca:80",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:80",
+    username: "e8dd65b92f6bce436e4d2e6c",
+    credential: "5VoqBSj3lApKT/f2",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:80?transport=tcp",
+    username: "e8dd65b92f6bce436e4d2e6c",
+    credential: "5VoqBSj3lApKT/f2",
+  },
+  {
+    urls: "turn:global.relay.metered.ca:443",
+    username: "e8dd65b92f6bce436e4d2e6c",
+    credential: "5VoqBSj3lApKT/f2",
+  },
+  {
+    urls: "turns:global.relay.metered.ca:443?transport=tcp",
+    username: "e8dd65b92f6bce436e4d2e6c",
+    credential: "5VoqBSj3lApKT/f2",
+  },
+];
+
+const PEERJS_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: ICE_SERVERS,
+    iceCandidatePoolSize: 10,
+  },
+};
+
 export type PeerStatus =
   | "idle"
   | "connecting"
@@ -68,9 +111,7 @@ export class P2PManager {
     }
 
     const hostPeerId = `wc-clash-${this.roomCode}-host`;
-    const peerInstance = new PeerClass(hostPeerId, {
-      debug: 1,
-    });
+    const peerInstance = new PeerClass(hostPeerId, PEERJS_CONFIG);
     this.peer = peerInstance;
 
     return new Promise((resolve, reject) => {
@@ -144,9 +185,7 @@ export class P2PManager {
     }
 
     const guestPeerId = `wc-clash-${this.roomCode}-guest-${Math.random().toString(36).substring(2, 8)}`;
-    const peerInstance = new PeerClass(guestPeerId, {
-      debug: 1,
-    });
+    const peerInstance = new PeerClass(guestPeerId, PEERJS_CONFIG);
     this.peer = peerInstance;
 
     return new Promise((resolve, reject) => {
